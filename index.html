@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vortex IPTV - Mobile Stabilized</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #060911;
+            color: #f1f5f9;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow-y: auto;
+        }
+        .focused {
+            border-color: #3b82f6 !important;
+            background-color: #1e293b !important;
+            transform: scale(1.02);
+            box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.6);
+            outline: none;
+        }
+        .tg-glow:hover {
+            box-shadow: 0 0 20px 2px rgba(34, 158, 217, 0.4);
+        }
+    </style>
+</head>
+<body class="min-h-screen w-screen m-0 p-0 select-none bg-[#060911]">
+
+    <div id="login-wall" class="fixed inset-0 bg-[#04060a] flex flex-col items-center justify-center z-50 px-4">
+        <div class="bg-[#0f1422]/90 backdrop-blur-md p-8 rounded-2xl shadow-2xl border border-slate-800 w-full max-w-md text-center">
+            <h1 class="text-3xl font-extrabold text-blue-500 mb-2 tracking-wide">XandyX - IPTV</h1>
+            <p class="text-sm text-slate-400 mb-6">Lütfen giriş şifrenizi giriniz.</p>
+            <input type="password" id="password-input" placeholder="•••••" class="w-full p-4 bg-[#161f32] border border-slate-700 rounded-xl text-center text-2xl tracking-widest text-white focus:outline-none focus:border-blue-500 transition-all mb-4">
+            <button onclick="checkPassword()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold p-4 rounded-xl transition-all shadow-lg shadow-blue-600/30">Giriş Yap</button>
+            <p id="login-error" class="text-red-500 text-sm mt-4 hidden font-medium">Hatalı şifre!</p>
+        </div>
+    </div>
+
+    <div id="screen-categories" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto flex flex-col justify-start">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-10 border-b border-slate-800/60 pb-6">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-widest text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full">Canlı Yayın Platformu</span>
+                <h1 class="text-4xl font-black tracking-tight text-white mt-2">XandyX <span class="text-blue-500">IPTV</span></h1>
+            </div>
+            <div class="flex items-center gap-4 w-full md:w-auto">
+                <a href="https://t.me/KanalKullaniciAdiniz" target="_blank" id="tg-btn" class="tg-glow flex items-center justify-center gap-2.5 bg-[#17212e] border border-[#229ed9]/30 hover:border-[#229ed9] text-white px-5 py-3 rounded-2xl text-sm font-bold transition-all shrink-0 group">
+                    <svg class="h-5 w-5 text-[#229ed9] group-hover:scale-110 transition-transform" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.14-.06-.2-.07-.06-.17-.04-.25-.02-.11.02-1.83 1.16-5.16 3.42-.49.34-.93.5-1.33.49-.44-.01-1.29-.25-1.92-.45-.77-.25-1.39-.39-1.34-.83.03-.23.35-.46.97-.71 3.82-1.66 6.37-2.75 7.66-3.29 3.66-1.53 4.42-1.8 4.92-1.81.11 0 .35.03.5.16.13.1.17.24.19.34.02.1.03.32.02.48z"/>
+                    </svg>
+                    <span class="hidden sm:inline">Telegram Grubu</span>
+                </a>
+                <div class="relative flex-1 md:w-80">
+                    <input type="text" id="main-search" oninput="handleSearch(this.value)" placeholder="Kanal veya kategori ara..." class="w-full pl-5 pr-12 py-3.5 bg-[#0f1524] border border-slate-800 rounded-2xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all">
+                    <div class="absolute right-4 top-3.5 text-slate-500 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mb-6">
+            <h2 id="grid-header-title" class="text-lg font-bold text-slate-300 tracking-wide uppercase">Yayın Kategorileri</h2>
+        </div>
+        <div id="category-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 py-2">
+            </div>
+    </div>
+
+    <div id="screen-channels" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
+        <div class="flex items-center gap-4 mb-8">
+            <button onclick="showCategoriesScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium">
+                ◀ Ana Sayfa
+            </button>
+            <div>
+                <h1 id="selected-category-title" class="text-2xl font-bold text-white">Kanallar</h1>
+                <p class="text-slate-400 text-xs mt-0.5">Alternatifleri görmek için bir kanal seçin.</p>
+            </div>
+        </div>
+        <div id="channels-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 py-4">
+            </div>
+    </div>
+
+    <div id="screen-alternatives" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
+        <div class="flex items-center gap-4 mb-8">
+            <button onclick="showChannelsScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium">
+                ◀ Kanallara Dön
+            </button>
+            <div>
+                <h1 id="selected-channel-title" class="text-2xl font-bold text-white">Alternatif Yayınlar</h1>
+                <p class="text-slate-400 text-xs mt-0.5">İzlemek istediğiniz yayın kaynağını seçin.</p>
+            </div>
+        </div>
+        <div id="alternatives-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6 py-4">
+            </div>
+    </div>
+
+    <div id="screen-player" class="hidden fixed inset-0 bg-black z-40 flex flex-col h-screen w-screen overflow-hidden">
+        <div class="absolute top-4 left-4 z-50 flex items-center gap-3 opacity-20 hover:opacity-100 transition-opacity duration-300">
+            <button onclick="backToAlternatives()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl">
+                ◀ Alternatiflere Dön
+            </button>
+            <div class="bg-black/80 px-4 py-2.5 rounded-xl border border-slate-800 backdrop-blur-md">
+                <span id="playing-title" class="text-sm font-bold text-white">Yayın</span>
+            </div>
+        </div>
+        <div class="w-full h-full flex items-center justify-center bg-black">
+            <video id="video-player" controls autoplay class="w-full h-full object-contain"></video>
+        </div>
+    </div>
+
+    <script>
+        const ACCESS_PASSWORD = "7G3M9X"; 
+        const GITHUB_REPO_URL = "https://raw.githubusercontent.com/baykurt12523041/mobil/main/";
+
+        const categoriesConfig = [
+            { name: "Ulusal Kanallar", file: "TÜRK ULUSAL.m3u", bgGradient: "from-blue-600 via-indigo-900 to-[#0e1629]" },
+            { name: "Spor Kanalları", file: "TÜRK SPOR.m3u", bgGradient: "from-amber-500 via-amber-950 to-[#0b0802]" },
+            { name: "Haber Kanalları", file: "TÜRK HABER.m3u", bgGradient: "from-red-600 via-rose-900 to-[#120505]" },
+            { name: "Sinema Kanalları", file: "TÜRK SINEMA.m3u", bgGradient: "from-purple-600 via-fuchsia-900 to-[#100614]" },
+            { name: "Belgesel Kanalları", file: "TÜRK BELGESEL.m3u", bgGradient: "from-lime-600 via-lime-900 to-[#0b1204]" },
+            { name: "Çocuk Kanalları", file: "TÜRK COCUK.m3u", bgGradient: "from-pink-500 via-pink-900 to-[#14050d]" },
+            { name: "Müzik", file: "TÜRK MÜZIK.m3u", bgGradient: "from-fuchsia-600 via-purple-900 to-[#120614]" },
+            { name: "Radyo", file: "TÜRK RADYO.m3u", bgGradient: "from-sky-500 via-sky-900 to-[#051014]" },
+            { name: "UHD Kanallar", file: "TÜRK UHD.m3u", bgGradient: "from-blue-500 via-cyan-900 to-[#040e14]" },
+            { name: "Yerel Kanallar", file: "TÜRK YEREL.m3u", bgGradient: "from-teal-700 via-teal-950 to-[#021210]" }
+            
+            
+        ];
+
+        let playlistData = [];
+        let currentCategoryIdx = 0;
+        let currentChannelIdx = 0;
+        let activeScreen = "categories"; 
+        let focusIndex = 0;
+        let isSearching = false;
+        let filteredChannels = [];
+
+        const video = document.getElementById('video-player');
+        const hls = new Hls();
+
+        function initializePlaylistData() {
+            playlistData = categoriesConfig.map(c => ({
+                categoryName: c.name,
+                description: `${c.name} yayınları yükleniyor...`,
+                bgGradient: c.bgGradient,
+                channels: [],
+                loaded: false,
+                file: c.file,
+                error: false
+            }));
+            renderCategories();
+            
+            // Arka planda listeleri indir (arama yapabilmek için)
+            playlistData.forEach((cat, idx) => {
+                fetchCategoryData(idx);
+            });
+        }
+
+        async function fetchCategoryData(idx) {
+            if (playlistData[idx].loaded || playlistData[idx].error) return;
+            
+            try {
+                const response = await fetch(GITHUB_REPO_URL + encodeURIComponent(playlistData[idx].file));
+                if (!response.ok) throw new Error("Ağ hatası");
+                const m3uText = await response.text();
+                const channels = parseM3U(m3uText);
+                
+                playlistData[idx].channels = channels;
+                playlistData[idx].loaded = true;
+                playlistData[idx].description = `${channels.length} kanal bulundu.`;
+                
+                // Eğer ekranda kategoriler açıksa yenile
+                if (activeScreen === "categories" && !isSearching) {
+                    renderCategories();
+                }
+            } catch (err) {
+                playlistData[idx].error = true;
+                playlistData[idx].description = "Yüklenemedi.";
+                if (activeScreen === "categories" && !isSearching) {
+                    renderCategories();
+                }
+            }
+        }
+
+        function parseM3U(content) {
+            const lines = content.split('\n');
+            let channels = {};
+            let currentExtinf = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('#EXTINF:')) {
+                    currentExtinf = line;
+                } else if (line !== '' && !line.startsWith('#') && currentExtinf) {
+                    const url = line;
+                    
+                    const logoMatch = currentExtinf.match(/tvg-logo="(.*?)"/);
+                    const logo = logoMatch ? logoMatch[1] : '';
+
+                    const nameParts = currentExtinf.split(',');
+                    const rawName = nameParts.length > 1 ? nameParts[nameParts.length - 1].trim() : "Bilinmeyen";
+
+                    let cleanName = rawName.replace(/^TR:\s*/i, '');
+                    
+                    const qualityRegex = /\s*(HD|FHD|UHD|HQ|SD|4K|\[.*?\]|\(.*?\)|1080p|720p)\s*/gi;
+                    let baseName = cleanName.replace(qualityRegex, '').trim();
+                    
+                    if (!baseName) baseName = cleanName;
+
+                    let quality = cleanName.substring(baseName.length).trim() || 'SD';
+
+                    if (!channels[baseName]) {
+                        channels[baseName] = {
+                            channelName: baseName,
+                            logo: logo,
+                            alternatives: []
+                        };
+                    }
+
+                    channels[baseName].alternatives.push({
+                        altName: cleanName,
+                        logo: logo,
+                        quality: quality.length > 15 ? quality.substring(0, 15) + "..." : quality,
+                        url: url
+                    });
+
+                    currentExtinf = null;
+                }
+            }
+            return Object.values(channels);
+        }
+
+        function checkPassword() {
+            const input = document.getElementById('password-input').value;
+            if (input === ACCESS_PASSWORD) {
+                document.getElementById('login-wall').classList.add('hidden');
+                initializePlaylistData();
+                showCategoriesScreen();
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function handleSearch(query) {
+            const cleanQuery = query.trim().toLowerCase();
+            const grid = document.getElementById('category-grid');
+            const headerTitle = document.getElementById('grid-header-title');
+
+            if (cleanQuery === "") {
+                isSearching = false;
+                headerTitle.innerText = "Yayın Kategorileri";
+                renderCategories();
+                return;
+            }
+
+            isSearching = true;
+            filteredChannels = [];
+
+            playlistData.forEach((category, catIdx) => {
+                if (category.loaded) {
+                    category.channels.forEach((channel, chanIdx) => {
+                        if (channel.channelName.toLowerCase().includes(cleanQuery) || category.categoryName.toLowerCase().includes(cleanQuery)) {
+                            filteredChannels.push({ ...channel, catIdx: catIdx, chanIdx: chanIdx });
+                        }
+                    });
+                }
+            });
+
+            headerTitle.innerText = `Arama Sonuçları (${filteredChannels.length} Kanal Bulundu)`;
+
+            if (filteredChannels.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 bg-[#0d121f] rounded-2xl border border-slate-800/60"><p class="text-slate-400 text-sm">Aradığınız kriterlere uygun bir yayın bulunamadı.</p></div>`;
+                return;
+            }
+
+            grid.innerHTML = filteredChannels.map((chan, idx) => `
+                <div id="search-chan-box-${idx}" onclick="directOpenFromSearch(${chan.catIdx}, ${chan.chanIdx})" class="group bg-[#0f1524] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex items-center p-4 gap-4 h-20">
+                    <img src="${chan.logo}" class="w-12 h-12 object-cover rounded-xl border border-slate-800 bg-slate-950" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=='">
+                    <div class="flex-1 min-w-0">
+                        <span class="text-[9px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">${playlistData[chan.catIdx].categoryName}</span>
+                        <h3 class="font-bold text-sm text-slate-200 truncate mt-1">${chan.channelName}</h3>
+                    </div>
+                    <span class="text-xs text-slate-500 font-bold pr-2">Aç ▶</span>
+                </div>
+            `).join('');
+            
+            focusIndex = 0;
+            applyFocus();
+        }
+
+        function directOpenFromSearch(catIdx, chanIdx) {
+            currentCategoryIdx = catIdx;
+            document.getElementById('main-search').value = "";
+            isSearching = false;
+            showAlternativesScreen(chanIdx);
+        }
+
+        function hideAllScreens() {
+            document.getElementById('screen-categories').classList.add('hidden');
+            document.getElementById('screen-channels').classList.add('hidden');
+            document.getElementById('screen-alternatives').classList.add('hidden');
+            document.getElementById('screen-player').classList.add('hidden');
+        }
+
+        function showCategoriesScreen() {
+            hideAllScreens();
+            video.pause();
+            document.getElementById('screen-categories').classList.remove('hidden');
+            activeScreen = "categories";
+            focusIndex = currentCategoryIdx;
+            document.getElementById('main-search').value = "";
+            isSearching = false;
+            renderCategories();
+        }
+
+        async function showChannelsScreen() {
+            if (!playlistData[currentCategoryIdx].loaded) {
+                document.getElementById('selected-category-title').innerText = "Yükleniyor...";
+                await fetchCategoryData(currentCategoryIdx);
+            }
+            
+            hideAllScreens();
+            video.pause();
+            document.getElementById('screen-channels').classList.remove('hidden');
+            activeScreen = "channels";
+            focusIndex = currentChannelIdx;
+            document.getElementById('selected-category-title').innerText = playlistData[currentCategoryIdx].categoryName;
+            renderChannels();
+        }
+
+        function showAlternativesScreen(chanIdx) {
+            currentChannelIdx = chanIdx;
+            hideAllScreens();
+            video.pause();
+            const channel = playlistData[currentCategoryIdx].channels[chanIdx];
+            document.getElementById('selected-channel-title').innerText = `${channel.channelName} Yayın Kaynakları`;
+            document.getElementById('screen-alternatives').classList.remove('hidden');
+            activeScreen = "alternatives";
+            focusIndex = 0;
+            renderAlternatives();
+        }
+
+        function playStreamNow(altIdx) {
+            hideAllScreens();
+            document.getElementById('screen-player').classList.remove('hidden');
+            activeScreen = "player";
+            const channel = playlistData[currentCategoryIdx].channels[currentChannelIdx];
+            const selectedAlt = channel.alternatives[altIdx];
+            document.getElementById('playing-title').innerText = `${channel.channelName} (${selectedAlt.quality})`;
+
+            if (Hls.isSupported()) {
+                hls.loadSource(selectedAlt.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = selectedAlt.url;
+                video.addEventListener('loadedmetadata', () => video.play());
+            }
+        }
+
+        function backToAlternatives() {
+            hideAllScreens();
+            video.pause();
+            document.getElementById('screen-alternatives').classList.remove('hidden');
+            activeScreen = "alternatives";
+            focusIndex = 0;
+            applyFocus();
+        }
+
+        function renderCategories() {
+            if (activeScreen !== "categories" || isSearching) return;
+            const grid = document.getElementById('category-grid');
+            grid.innerHTML = playlistData.map((cat, idx) => `
+                <div id="cat-box-${idx}" onclick="selectCategory(${idx})" class="p-6 rounded-2xl bg-gradient-to-br ${cat.bgGradient} border border-slate-700/40 cursor-pointer shadow-lg transition-all flex flex-col justify-between h-40 relative overflow-hidden group">
+                    <div>
+                        <h2 class="text-xl font-bold text-white tracking-wide">${cat.categoryName}</h2>
+                        <p class="text-xs text-white/60 mt-1.5 line-clamp-2">${cat.description}</p>
+                    </div>
+                    <div class="flex justify-between items-center z-10">
+                        ${cat.loaded ? 
+                            `<span class="text-[11px] bg-black/40 border border-white/10 px-3 py-1 rounded-full text-slate-200 font-semibold">${cat.channels.length} KANAL</span>` 
+                            : `<span class="text-[11px] bg-white/20 border border-white/10 px-3 py-1 rounded-full text-white font-semibold animate-pulse">${cat.error ? "Hata" : "Yükleniyor..."}</span>`}
+                        <span class="text-xs font-bold text-white/90 bg-white/10 px-3 py-1 rounded-xl">Göz At →</span>
+                    </div>
+                </div>
+            `).join('');
+            applyFocus();
+        }
+
+        function selectCategory(idx) {
+            currentCategoryIdx = idx;
+            showChannelsScreen();
+        }
+
+        function renderChannels() {
+            const grid = document.getElementById('channels-grid');
+            const channels = playlistData[currentCategoryIdx].channels;
+            if (channels.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 bg-[#0d121f] rounded-2xl border border-slate-800/60"><p class="text-slate-400 text-sm">Bu kategoride kanal bulunamadı veya yüklenemedi.</p></div>`;
+                return;
+            }
+            grid.innerHTML = channels.map((chan, idx) => `
+                <div id="chan-box-${idx}" onclick="showAlternativesScreen(${idx})" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-col h-48 md:h-56">
+                    <div class="w-full h-32 md:h-36 bg-slate-950 overflow-hidden relative">
+                        <img src="${chan.logo}" alt="${chan.channelName}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=='" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                    </div>
+                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826]">
+                        <h3 class="font-bold text-sm md:text-base text-slate-200 truncate">${chan.channelName}</h3>
+                        <span class="text-[10px] md:text-[11px] text-blue-400 font-medium">${chan.alternatives.length} Kaynak Seçeneği</span>
+                    </div>
+                </div>
+            `).join('');
+            applyFocus();
+        }
+
+        function renderAlternatives() {
+            const grid = document.getElementById('alternatives-grid');
+            const alternatives = playlistData[currentCategoryIdx].channels[currentChannelIdx].alternatives;
+
+            grid.innerHTML = alternatives.map((alt, idx) => `
+                <div id="alt-box-${idx}" onclick="playStreamNow(${idx})" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-row md:flex-col h-24 md:h-56">
+                    <div class="w-24 md:w-full h-full md:h-36 bg-gradient-to-br from-slate-950 to-slate-900 overflow-hidden relative shrink-0">
+                        <img src="${alt.logo}" alt="${alt.altName}" onerror="this.style.display='none'" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        <span class="hidden md:inline-block absolute top-2 right-2 text-[9px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded uppercase tracking-wider shadow-md truncate max-w-[80px]">${alt.quality}</span>
+                        <span class="hidden md:inline-block absolute bottom-2 left-3 text-[10px] bg-red-600 font-bold px-2 py-0.5 rounded uppercase tracking-wider text-white shadow-md">Alternatif ${idx + 1}</span>
+                    </div>
+                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826] min-w-0">
+                        <div class="flex flex-col gap-1 md:gap-0">
+                            <div class="flex items-center gap-1.5 md:hidden">
+                                <span class="text-[9px] bg-red-600 font-bold px-1.5 py-0.5 rounded uppercase text-white">Alt ${idx + 1}</span>
+                                <span class="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded uppercase truncate max-w-[80px]">${alt.quality}</span>
+                            </div>
+                            <h3 class="font-bold text-xs md:text-sm text-slate-200 truncate group-hover:text-blue-400 transition-colors mt-0.5 md:mt-0">${alt.altName}</h3>
+                        </div>
+                        <span class="text-[10px] md:text-[11px] text-slate-500 font-medium group-hover:text-blue-400">Hızlı Oynat ▶</span>
+                    </div>
+                </div>
+            `).join('');
+            applyFocus();
+        }
+
+        function applyFocus() {
+            document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
+            let target;
+            if (activeScreen === "categories") {
+                target = isSearching ? document.getElementById(`search-chan-box-${focusIndex}`) : document.getElementById(`cat-box-${focusIndex}`);
+            } else if (activeScreen === "channels") {
+                target = document.getElementById(`chan-box-${focusIndex}`);
+            } else if (activeScreen === "alternatives") {
+                target = document.getElementById(`alt-box-${focusIndex}`);
+            }
+            if (target) {
+                target.classList.add('focused');
+                target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (!document.getElementById('login-wall').classList.contains('hidden')) {
+                if (e.key === "Enter") checkPassword();
+                return;
+            }
+            if (document.activeElement === document.getElementById('main-search') && e.key !== "Enter" && e.key !== "Escape") return;
+
+            if (activeScreen === "categories") {
+                const maxLimit = isSearching ? filteredChannels.length - 1 : playlistData.length - 1;
+                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < maxLimit) { focusIndex++; applyFocus(); } e.preventDefault(); }
+                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
+                if (e.key === "Enter") { e.preventDefault(); if (isSearching) { directOpenFromSearch(filteredChannels[focusIndex].catIdx, filteredChannels[focusIndex].chanIdx); } else { selectCategory(focusIndex); } }
+            } 
+            else if (activeScreen === "channels") {
+                const chans = playlistData[currentCategoryIdx].channels;
+                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < chans.length - 1) { focusIndex++; applyFocus(); } e.preventDefault(); }
+                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
+                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); showCategoriesScreen(); }
+                if (e.key === "Enter") { e.preventDefault(); showAlternativesScreen(focusIndex); }
+            } 
+            else if (activeScreen === "alternatives") {
+                const alts = playlistData[currentCategoryIdx].channels[currentChannelIdx].alternatives;
+                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < alts.length - 1) { focusIndex++; applyFocus(); } e.preventDefault(); }
+                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
+                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); showChannelsScreen(); }
+                if (e.key === "Enter") { e.preventDefault(); playStreamNow(focusIndex); }
+            }
+            else if (activeScreen === "player") {
+                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); backToAlternatives(); }
+            }
+        });
+    </script>
+</body>
+</html>
