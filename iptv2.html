@@ -109,7 +109,7 @@
     </div>
 
     <script>
-        const ACCESS_PASSWORD = "123456"; 
+        const ACCESS_PASSWORD = "7G3M9X"; 
         const GITHUB_REPO_URL = "https://raw.githubusercontent.com/baykurt12523041/mobil/main/";
 
         const categoriesConfig = [
@@ -170,7 +170,6 @@
                 playlistData[idx].loaded = true;
                 playlistData[idx].description = `${channels.length} kanal bulundu.`;
                 
-                // Eğer ekranda kategoriler açıksa yenile
                 if (activeScreen === "categories" && !isSearching) {
                     renderCategories();
                 }
@@ -306,10 +305,22 @@
         }
 
         function goBackScreen() {
-            if (screenStack.length === 0) {
-                window.location.reload();
+            // 1. Eğer arama modunda isek aramayı temizle ve ana kategori görünümüne dön (uygulama kapanmasın)
+            if (activeScreen === "categories" && isSearching) {
+                const searchInput = document.getElementById('main-search');
+                if (searchInput) searchInput.value = "";
+                handleSearch("");
                 return;
             }
+            
+            // 2. Eğer yığın boşsa: ana ekrandayız demektir, hiçbir şey yapma (çıkış yok)
+            if (screenStack.length === 0) {
+                // Ana ekranda geri tuşuna basıldı → uygulama kapanmaz, sadece kalır.
+                // isteğe bağlı olarak bir geri bildirim eklenebilir, ama sessizce işlem yapma.
+                return;
+            }
+            
+            // 3. Yığından önceki ekran bilgisini al ve geri dön
             const prevState = screenStack.pop();
             if (prevState.screen === "categories") {
                 showCategoriesScreen(false);
@@ -333,7 +344,7 @@
             isSearching = false;
             renderCategories();
             if (pushToStack) {
-                screenStack = [];
+                screenStack = []; // ana ekrana dönüşte yığını sıfırla, çünkü artık kök ekrandayız.
             }
         }
 
@@ -417,7 +428,7 @@
 
         function selectCategory(idx) {
             currentCategoryIdx = idx;
-            showChannelsScreen();
+            showChannelsScreen(true);
         }
 
         function renderChannels() {
@@ -542,9 +553,7 @@
             const candidates = getFocusableElements();
             
             if (!active) {
-                if (candidates.length > 0) {
-                    setFocusTo(candidates[0]);
-                }
+                if (candidates.length > 0) setFocusTo(candidates[0]);
                 return;
             }
             
@@ -559,40 +568,24 @@
             
             candidates.forEach(candidate => {
                 if (candidate === active) return;
-                
                 const rect = candidate.getBoundingClientRect();
                 const center = {
                     x: rect.left + rect.width / 2,
                     y: rect.top + rect.height / 2
                 };
-                
                 const dx = center.x - activeCenter.x;
                 const dy = center.y - activeCenter.y;
-                
                 let isValid = false;
                 switch (direction) {
-                    case 'left':
-                        isValid = dx < -5;
-                        break;
-                    case 'right':
-                        isValid = dx > 5;
-                        break;
-                    case 'up':
-                        isValid = dy < -5;
-                        break;
-                    case 'down':
-                        isValid = dy > 5;
-                        break;
+                    case 'left': isValid = dx < -5; break;
+                    case 'right': isValid = dx > 5; break;
+                    case 'up': isValid = dy < -5; break;
+                    case 'down': isValid = dy > 5; break;
                 }
-                
                 if (isValid) {
                     let score = 0;
-                    if (direction === 'left' || direction === 'right') {
-                        score = Math.abs(dx) + Math.abs(dy) * 4;
-                    } else {
-                        score = Math.abs(dy) + Math.abs(dx) * 4;
-                    }
-                    
+                    if (direction === 'left' || direction === 'right') score = Math.abs(dx) + Math.abs(dy) * 4;
+                    else score = Math.abs(dy) + Math.abs(dx) * 4;
                     if (score < minScore) {
                         minScore = score;
                         bestCandidate = candidate;
@@ -603,9 +596,7 @@
             if (bestCandidate) {
                 setFocusTo(bestCandidate);
                 const idMatch = bestCandidate.id.match(/\d+$/);
-                if (idMatch) {
-                    focusIndex = parseInt(idMatch[0], 10);
-                }
+                if (idMatch) focusIndex = parseInt(idMatch[0], 10);
             }
         }
 
