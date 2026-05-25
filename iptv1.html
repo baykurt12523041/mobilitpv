@@ -68,7 +68,7 @@
 
     <div id="screen-channels" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button onclick="showCategoriesScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium">
+            <button id="channels-back-btn" onclick="history.back()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Ana Sayfa
             </button>
             <div>
@@ -82,7 +82,7 @@
 
     <div id="screen-alternatives" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button onclick="showChannelsScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium">
+            <button id="alternatives-back-btn" onclick="history.back()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Kanallara Dön
             </button>
             <div>
@@ -96,7 +96,7 @@
 
     <div id="screen-player" class="hidden fixed inset-0 bg-black z-40 flex flex-col h-screen w-screen overflow-hidden">
         <div class="absolute top-4 left-4 z-50 flex items-center gap-3 opacity-20 hover:opacity-100 transition-opacity duration-300">
-            <button onclick="backToAlternatives()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl">
+            <button id="player-back-btn" onclick="backToAlternatives()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl border border-transparent">
                 ◀ Alternatiflere Dön
             </button>
             <div class="bg-black/80 px-4 py-2.5 rounded-xl border border-slate-800 backdrop-blur-md">
@@ -235,11 +235,34 @@
             if (input === ACCESS_PASSWORD) {
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
-                showCategoriesScreen();
+                history.replaceState({ screen: "categories" }, "", "");
+                showCategoriesScreen(false);
             } else {
                 document.getElementById('login-error').classList.remove('hidden');
             }
         }
+
+        window.addEventListener('popstate', (e) => {
+            const state = e.state;
+            if (state) {
+                if (state.screen === "categories") {
+                    showCategoriesScreen(false);
+                } else if (state.screen === "channels") {
+                    currentCategoryIdx = state.catIdx !== undefined ? state.catIdx : currentCategoryIdx;
+                    showChannelsScreen(false);
+                } else if (state.screen === "alternatives") {
+                    currentCategoryIdx = state.catIdx !== undefined ? state.catIdx : currentCategoryIdx;
+                    currentChannelIdx = state.chanIdx !== undefined ? state.chanIdx : currentChannelIdx;
+                    showAlternativesScreen(currentChannelIdx, false);
+                } else if (state.screen === "player") {
+                    // Usually shouldn't pop into player unless coming forward, but just in case
+                    playStreamNow(0, false);
+                }
+            } else {
+                // Default fallback
+                showCategoriesScreen(false);
+            }
+        });
 
         function handleSearch(query) {
             const cleanQuery = query.trim().toLowerCase();
@@ -292,7 +315,7 @@
             currentCategoryIdx = catIdx;
             document.getElementById('main-search').value = "";
             isSearching = false;
-            showAlternativesScreen(chanIdx);
+            showAlternativesScreen(chanIdx, true);
         }
 
         function hideAllScreens() {
@@ -302,7 +325,7 @@
             document.getElementById('screen-player').classList.add('hidden');
         }
 
-        function showCategoriesScreen() {
+        function showCategoriesScreen(pushHistory = true) {
             hideAllScreens();
             video.pause();
             document.getElementById('screen-categories').classList.remove('hidden');
@@ -311,9 +334,12 @@
             document.getElementById('main-search').value = "";
             isSearching = false;
             renderCategories();
+            if (pushHistory) {
+                history.pushState({ screen: "categories" }, "", "");
+            }
         }
 
-        async function showChannelsScreen() {
+        async function showChannelsScreen(pushHistory = true) {
             if (!playlistData[currentCategoryIdx].loaded) {
                 document.getElementById('selected-category-title').innerText = "Yükleniyor...";
                 await fetchCategoryData(currentCategoryIdx);
@@ -326,9 +352,12 @@
             focusIndex = currentChannelIdx;
             document.getElementById('selected-category-title').innerText = playlistData[currentCategoryIdx].categoryName;
             renderChannels();
+            if (pushHistory) {
+                history.pushState({ screen: "channels", catIdx: currentCategoryIdx }, "", "");
+            }
         }
 
-        function showAlternativesScreen(chanIdx) {
+        function showAlternativesScreen(chanIdx, pushHistory = true) {
             currentChannelIdx = chanIdx;
             hideAllScreens();
             video.pause();
@@ -338,9 +367,12 @@
             activeScreen = "alternatives";
             focusIndex = 0;
             renderAlternatives();
+            if (pushHistory) {
+                history.pushState({ screen: "alternatives", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx }, "", "");
+            }
         }
 
-        function playStreamNow(altIdx) {
+        function playStreamNow(altIdx, pushHistory = true) {
             hideAllScreens();
             document.getElementById('screen-player').classList.remove('hidden');
             activeScreen = "player";
@@ -356,15 +388,14 @@
                 video.src = selectedAlt.url;
                 video.addEventListener('loadedmetadata', () => video.play());
             }
+            if (pushHistory) {
+                history.pushState({ screen: "player" }, "", "");
+            }
         }
 
         function backToAlternatives() {
-            hideAllScreens();
-            video.pause();
-            document.getElementById('screen-alternatives').classList.remove('hidden');
-            activeScreen = "alternatives";
-            focusIndex = 0;
-            applyFocus();
+            // Artık kendi history API mizi kullanıyoruz. Manuel geri gitmek için:
+            history.back();
         }
 
         function renderCategories() {
@@ -400,7 +431,7 @@
                 return;
             }
             grid.innerHTML = channels.map((chan, idx) => `
-                <div id="chan-box-${idx}" onclick="showAlternativesScreen(${idx})" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-col h-48 md:h-56">
+                <div id="chan-box-${idx}" onclick="showAlternativesScreen(${idx}, true)" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-col h-48 md:h-56">
                     <div class="w-full h-32 md:h-36 bg-slate-950 overflow-hidden relative">
                         <img src="${chan.logo}" alt="${chan.channelName}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=='" class="w-full h-full object-cover">
                         <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
@@ -419,7 +450,7 @@
             const alternatives = playlistData[currentCategoryIdx].channels[currentChannelIdx].alternatives;
 
             grid.innerHTML = alternatives.map((alt, idx) => `
-                <div id="alt-box-${idx}" onclick="playStreamNow(${idx})" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-row md:flex-col h-24 md:h-56">
+                <div id="alt-box-${idx}" onclick="playStreamNow(${idx}, true)" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-row md:flex-col h-24 md:h-56">
                     <div class="w-24 md:w-full h-full md:h-36 bg-gradient-to-br from-slate-950 to-slate-900 overflow-hidden relative shrink-0">
                         <img src="${alt.logo}" alt="${alt.altName}" onerror="this.style.display='none'" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
                         <span class="hidden md:inline-block absolute top-2 right-2 text-[9px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded uppercase tracking-wider shadow-md truncate max-w-[80px]">${alt.quality}</span>
@@ -440,51 +471,193 @@
             applyFocus();
         }
 
-        function applyFocus() {
-            document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
-            let target;
+        function getFocusableElements() {
+            const list = [];
             if (activeScreen === "categories") {
-                target = isSearching ? document.getElementById(`search-chan-box-${focusIndex}`) : document.getElementById(`cat-box-${focusIndex}`);
+                const tg = document.getElementById('tg-btn');
+                if (tg) list.push(tg);
+                const search = document.getElementById('main-search');
+                if (search) list.push(search);
+                
+                if (isSearching) {
+                    const boxes = document.querySelectorAll('[id^="search-chan-box-"]');
+                    boxes.forEach(b => list.push(b));
+                } else {
+                    const boxes = document.querySelectorAll('[id^="cat-box-"]');
+                    boxes.forEach(b => list.push(b));
+                }
             } else if (activeScreen === "channels") {
-                target = document.getElementById(`chan-box-${focusIndex}`);
+                const back = document.getElementById('channels-back-btn');
+                if (back) list.push(back);
+                const boxes = document.querySelectorAll('[id^="chan-box-"]');
+                boxes.forEach(b => list.push(b));
             } else if (activeScreen === "alternatives") {
-                target = document.getElementById(`alt-box-${focusIndex}`);
+                const back = document.getElementById('alternatives-back-btn');
+                if (back) list.push(back);
+                const boxes = document.querySelectorAll('[id^="alt-box-"]');
+                boxes.forEach(b => list.push(b));
             }
-            if (target) {
-                target.classList.add('focused');
-                target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return list.filter(el => el && el.offsetParent !== null);
+        }
+
+        function getActiveFocusedElement() {
+            if (document.activeElement && document.activeElement.id === "main-search") {
+                return document.activeElement;
+            }
+            return document.querySelector('.focused');
+        }
+
+        function setFocusTo(el) {
+            if (!el) return;
+            document.querySelectorAll('.focused').forEach(item => item.classList.remove('focused'));
+            if (el.id === "main-search") {
+                el.focus();
+            } else {
+                if (document.activeElement && document.activeElement.id === "main-search") {
+                    document.activeElement.blur();
+                }
+                el.classList.add('focused');
+            }
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function applyFocus() {
+            const candidates = getFocusableElements();
+            if (candidates.length > 0) {
+                let target = null;
+                if (activeScreen === "categories") {
+                    target = isSearching ? document.getElementById(`search-chan-box-${focusIndex}`) : document.getElementById(`cat-box-${focusIndex}`);
+                } else if (activeScreen === "channels") {
+                    target = document.getElementById(`chan-box-${focusIndex}`);
+                } else if (activeScreen === "alternatives") {
+                    target = document.getElementById(`alt-box-${focusIndex}`);
+                }
+                if (target && candidates.includes(target)) {
+                    setFocusTo(target);
+                } else {
+                    setFocusTo(candidates[0]);
+                }
+            }
+        }
+
+        function navigate(direction) {
+            const active = getActiveFocusedElement();
+            const candidates = getFocusableElements();
+            
+            if (!active) {
+                if (candidates.length > 0) {
+                    setFocusTo(candidates[0]);
+                }
+                return;
+            }
+            
+            const activeRect = active.getBoundingClientRect();
+            const activeCenter = {
+                x: activeRect.left + activeRect.width / 2,
+                y: activeRect.top + activeRect.height / 2
+            };
+            
+            let bestCandidate = null;
+            let minScore = Infinity;
+            
+            candidates.forEach(candidate => {
+                if (candidate === active) return;
+                
+                const rect = candidate.getBoundingClientRect();
+                const center = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+                
+                const dx = center.x - activeCenter.x;
+                const dy = center.y - activeCenter.y;
+                
+                let isValid = false;
+                switch (direction) {
+                    case 'left':
+                        isValid = dx < -5;
+                        break;
+                    case 'right':
+                        isValid = dx > 5;
+                        break;
+                    case 'up':
+                        isValid = dy < -5;
+                        break;
+                    case 'down':
+                        isValid = dy > 5;
+                        break;
+                }
+                
+                if (isValid) {
+                    let score = 0;
+                    if (direction === 'left' || direction === 'right') {
+                        score = Math.abs(dx) + Math.abs(dy) * 4;
+                    } else {
+                        score = Math.abs(dy) + Math.abs(dx) * 4;
+                    }
+                    
+                    if (score < minScore) {
+                        minScore = score;
+                        bestCandidate = candidate;
+                    }
+                }
+            });
+            
+            if (bestCandidate) {
+                setFocusTo(bestCandidate);
+                const idMatch = bestCandidate.id.match(/\d+$/);
+                if (idMatch) {
+                    focusIndex = parseInt(idMatch[0], 10);
+                }
             }
         }
 
         window.addEventListener('keydown', (e) => {
+            const isRight = e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39;
+            const isLeft = e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37;
+            const isDown = e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40;
+            const isUp = e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38;
+            const isEnter = e.key === "Enter" || e.keyCode === 13;
+            const isBack = e.key === "Backspace" || e.key === "Escape" || e.key === "Back" || e.keyCode === 8 || e.keyCode === 27 || e.keyCode === 4 || e.keyCode === 10009;
+
             if (!document.getElementById('login-wall').classList.contains('hidden')) {
-                if (e.key === "Enter") checkPassword();
+                if (isEnter) checkPassword();
                 return;
             }
-            if (document.activeElement === document.getElementById('main-search') && e.key !== "Enter" && e.key !== "Escape") return;
-
-            if (activeScreen === "categories") {
-                const maxLimit = isSearching ? filteredChannels.length - 1 : playlistData.length - 1;
-                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < maxLimit) { focusIndex++; applyFocus(); } e.preventDefault(); }
-                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
-                if (e.key === "Enter") { e.preventDefault(); if (isSearching) { directOpenFromSearch(filteredChannels[focusIndex].catIdx, filteredChannels[focusIndex].chanIdx); } else { selectCategory(focusIndex); } }
-            } 
-            else if (activeScreen === "channels") {
-                const chans = playlistData[currentCategoryIdx].channels;
-                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < chans.length - 1) { focusIndex++; applyFocus(); } e.preventDefault(); }
-                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
-                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); showCategoriesScreen(); }
-                if (e.key === "Enter") { e.preventDefault(); showAlternativesScreen(focusIndex); }
-            } 
-            else if (activeScreen === "alternatives") {
-                const alts = playlistData[currentCategoryIdx].channels[currentChannelIdx].alternatives;
-                if (e.key === "ArrowRight" || e.key === "ArrowDown") { if (focusIndex < alts.length - 1) { focusIndex++; applyFocus(); } e.preventDefault(); }
-                if (e.key === "ArrowLeft" || e.key === "ArrowUp") { if (focusIndex > 0) { focusIndex--; applyFocus(); } e.preventDefault(); }
-                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); showChannelsScreen(); }
-                if (e.key === "Enter") { e.preventDefault(); playStreamNow(focusIndex); }
+            
+            if (document.activeElement === document.getElementById('main-search') && 
+                !isEnter && !isBack && !isDown && !isUp) {
+                return;
             }
-            else if (activeScreen === "player") {
-                if (e.key === "Backspace" || e.key === "Escape") { e.preventDefault(); backToAlternatives(); }
+
+            if (isBack) {
+                e.preventDefault();
+                if (activeScreen !== "categories") {
+                    history.back();
+                } else {
+                    window.location.reload();
+                }
+                return;
+            }
+
+            if (isRight) {
+                e.preventDefault();
+                navigate('right');
+            } else if (isLeft) {
+                e.preventDefault();
+                navigate('left');
+            } else if (isDown) {
+                e.preventDefault();
+                navigate('down');
+            } else if (isUp) {
+                e.preventDefault();
+                navigate('up');
+            } else if (isEnter) {
+                const active = getActiveFocusedElement();
+                if (active) {
+                    e.preventDefault();
+                    active.click();
+                }
             }
         });
     </script>
