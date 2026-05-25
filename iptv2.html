@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vortex IPTV - Mobile Stabilized</title>
+    <title>Vortex IPTV - TV Stabil</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -68,7 +68,7 @@
 
     <div id="screen-channels" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button id="channels-back-btn" onclick="goBackScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
+            <button id="channels-back-btn" onclick="manualGoBack()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Ana Sayfa
             </button>
             <div>
@@ -82,7 +82,7 @@
 
     <div id="screen-alternatives" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button id="alternatives-back-btn" onclick="goBackScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
+            <button id="alternatives-back-btn" onclick="manualGoBack()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Kanallara Dön
             </button>
             <div>
@@ -96,7 +96,7 @@
 
     <div id="screen-player" class="hidden fixed inset-0 bg-black z-40 flex flex-col h-screen w-screen overflow-hidden">
         <div class="absolute top-4 left-4 z-50 flex items-center gap-3 opacity-20 hover:opacity-100 transition-opacity duration-300">
-            <button id="player-back-btn" onclick="goBackScreen()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl border border-transparent">
+            <button id="player-back-btn" onclick="manualGoBack()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl">
                 ◀ Alternatiflere Dön
             </button>
             <div class="bg-black/80 px-4 py-2.5 rounded-xl border border-slate-800 backdrop-blur-md">
@@ -133,16 +133,23 @@
         let isSearching = false;
         let filteredChannels = [];
         
-        // Geri yığını artık history API ile yönetilecek, ayrıca stack array'i sadece durum için
-        let internalStack = []; 
+        // Basit gezinti yığını: her ekran değişiminde push, geride pop yapılır
+        let navigationStack = []; 
 
         const video = document.getElementById('video-player');
-        let hls = null; // sonradan oluştur
+        let hlsPlayer = null;
+
+        function destroyHls() {
+            if (hlsPlayer) {
+                hlsPlayer.destroy();
+                hlsPlayer = null;
+            }
+        }
 
         function initHls() {
-            if (hls) hls.destroy();
-            hls = new Hls();
-            return hls;
+            destroyHls();
+            hlsPlayer = new Hls();
+            return hlsPlayer;
         }
 
         function initializePlaylistData() {
@@ -214,10 +221,9 @@
                 localStorage.setItem('saved_iptv_password', input);
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
-                internalStack = [];
-                // Ana sayfayı göster ve history state'i temizle
-                history.replaceState({ screen: "categories" }, "");
-                showCategoriesScreen(false);
+                // Gezinti yığınını sıfırla ve ana ekranı ekle
+                navigationStack = [];
+                showCategoriesScreen(true); // true: yığına ekle (ana sayfa)
             } else {
                 document.getElementById('login-error').classList.remove('hidden');
             }
@@ -267,6 +273,7 @@
             currentCategoryIdx = catIdx;
             document.getElementById('main-search').value = "";
             isSearching = false;
+            // Arama sonucundan direkt alternatiflere geçerken yığına ekle
             showAlternativesScreen(chanIdx, true);
         }
 
@@ -277,46 +284,44 @@
             document.getElementById('screen-player').classList.add('hidden');
         }
 
-        // Gelişmiş geri navigasyon: history API tabanlı
-        function goBackScreen() {
-            // Arama modundaysa aramayı temizle
+        // MANUEL GERİ BUTONU - Tüm geri tuşları burayı çağırır
+        function manualGoBack() {
+            // Eğer arama modundaysak aramadan çık
             if (activeScreen === "categories" && isSearching) {
                 const searchInput = document.getElementById('main-search');
                 if (searchInput) searchInput.value = "";
                 handleSearch("");
                 return;
             }
-            // Eğer internalStack boşsa ana ekrandayız, hiçbir şey yapma (çıkış yok)
-            if (internalStack.length === 0) return;
             
-            const prev = internalStack.pop();
-            if (prev.screen === "categories") {
-                showCategoriesScreen(false);
-            } else if (prev.screen === "channels") {
-                currentCategoryIdx = prev.catIdx;
+            // Yığın boyutu 1 veya daha az ise ana ekrandayız demektir (categories)
+            if (navigationStack.length <= 1) {
+                // Ana ekranda geri tuşuna basıldı -> hiçbir şey yapma (çıkma yok)
+                return;
+            }
+            
+            // Yığından son elemanı at (şu anki ekranı çıkar)
+            navigationStack.pop();
+            // Şimdi yığındaki son ekran bilgisine göre geri dön
+            const previous = navigationStack[navigationStack.length - 1];
+            
+            if (previous.screen === "categories") {
+                showCategoriesScreen(false); // false: yığına tekrar ekleme
+            } else if (previous.screen === "channels") {
+                currentCategoryIdx = previous.catIdx;
                 showChannelsScreen(false);
-            } else if (prev.screen === "alternatives") {
-                currentCategoryIdx = prev.catIdx;
-                currentChannelIdx = prev.chanIdx;
-                showAlternativesScreen(currentChannelIdx, false);
-            } else if (prev.screen === "player") {
-                // Oyuncudan alternatiflere dönüş
-                currentCategoryIdx = prev.catIdx;
-                currentChannelIdx = prev.chanIdx;
+            } else if (previous.screen === "alternatives") {
+                currentCategoryIdx = previous.catIdx;
+                currentChannelIdx = previous.chanIdx;
                 showAlternativesScreen(currentChannelIdx, false);
             }
         }
 
-        // History state yönetimi: her ekran değişiminde state ekle
-        function pushScreenState(screenType, extra = {}) {
-            const state = { screen: screenType, ...extra };
-            history.pushState(state, "");
-            internalStack.push(state);
-        }
-
+        // Ekran gösterim fonksiyonları (pushToStack ile yığın yönetimi)
         function showCategoriesScreen(pushToStack = true) {
             hideAllScreens();
-            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
+            destroyHls();
+            video.pause();
             document.getElementById('screen-categories').classList.remove('hidden');
             activeScreen = "categories";
             focusIndex = currentCategoryIdx;
@@ -324,10 +329,7 @@
             isSearching = false;
             renderCategories();
             if (pushToStack) {
-                // Eski stack'i temizle ve sadece categories state'ini koy
-                internalStack = [];
-                history.replaceState({ screen: "categories" }, "");
-                pushScreenState("categories");
+                navigationStack.push({ screen: "categories" });
             }
         }
 
@@ -337,21 +339,23 @@
                 await fetchCategoryData(currentCategoryIdx);
             }
             hideAllScreens();
-            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
+            destroyHls();
+            video.pause();
             document.getElementById('screen-channels').classList.remove('hidden');
             activeScreen = "channels";
             focusIndex = currentChannelIdx;
             document.getElementById('selected-category-title').innerText = playlistData[currentCategoryIdx].categoryName;
             renderChannels();
             if (pushToStack) {
-                pushScreenState("channels", { catIdx: currentCategoryIdx });
+                navigationStack.push({ screen: "channels", catIdx: currentCategoryIdx });
             }
         }
 
         function showAlternativesScreen(chanIdx, pushToStack = true) {
             currentChannelIdx = chanIdx;
             hideAllScreens();
-            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
+            destroyHls();
+            video.pause();
             const channel = playlistData[currentCategoryIdx].channels[chanIdx];
             document.getElementById('selected-channel-title').innerText = `${channel.channelName} Yayın Kaynakları`;
             document.getElementById('screen-alternatives').classList.remove('hidden');
@@ -359,7 +363,7 @@
             focusIndex = 0;
             renderAlternatives();
             if (pushToStack) {
-                pushScreenState("alternatives", { catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
+                navigationStack.push({ screen: "alternatives", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
             }
         }
 
@@ -371,50 +375,22 @@
             const selectedAlt = channel.alternatives[altIdx];
             document.getElementById('playing-title').innerText = `${channel.channelName} (${selectedAlt.quality})`;
             
-            if (hls) hls.destroy();
-            hls = new Hls();
+            destroyHls();
             if (Hls.isSupported()) {
-                hls.loadSource(selectedAlt.url);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
+                const newHls = initHls();
+                newHls.loadSource(selectedAlt.url);
+                newHls.attachMedia(video);
+                newHls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = selectedAlt.url;
                 video.addEventListener('loadedmetadata', () => video.play());
             }
             if (pushToStack) {
-                pushScreenState("player", { catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
+                navigationStack.push({ screen: "player", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
             }
         }
 
-        // Back tuşu için history API dinleyicisi
-        window.addEventListener("popstate", (event) => {
-            // Kullanıcı geri tuşuna bastığında popstate tetiklenir.
-            // Biz manuel olarak goBackScreen() işlevini çağırıyoruz, çünkü state değişti.
-            // Aynı zamanda internalStack ile senkronize etmek için son state'i kaldır.
-            if (internalStack.length > 0) {
-                // internalStack'in son elemanı şu anki ekranı temsil eder, popstate ile bir geri gidiyoruz.
-                // Bu yüzden internalStack'ten de son elemanı atıp bir önceki ekrana geçmeliyiz.
-                // Lakin goBackScreen zaten internalStack.pop() yapıyor, burada tekrar pop yapmamalıyız.
-                // Sadece goBackScreen çağır ve internalStack'in senkronizasyonunu goBackScreen yapsın.
-                goBackScreen();
-            } else {
-                // Eğer internalStack boşsa ve popstate olduysa, ana sayfadayız ve geri tuşuna basıldı.
-                // Hiçbir şey yapma, sayfa kapanmasın.
-                // Fakat bazen history'de bir önceki state olabilir, onu engellemek için tekrar state ekleyelim.
-                history.pushState({ screen: "categories" }, "");
-            }
-        });
-
-        // buton geri çağrıları
-        window.goBackScreen = goBackScreen;
-        window.selectCategory = (idx) => { currentCategoryIdx = idx; showChannelsScreen(true); };
-        window.showAlternativesScreen = showAlternativesScreen;
-        window.playStreamNow = playStreamNow;
-        window.directOpenFromSearch = directOpenFromSearch;
-        window.checkPassword = checkPassword;
-        window.handleSearch = handleSearch;
-
-        // Render fonksiyonları
+        // --- Render fonksiyonları (aynı) ---
         function renderCategories() {
             if (activeScreen !== "categories" || isSearching) return;
             const grid = document.getElementById('category-grid');
@@ -428,6 +404,11 @@
                 </div>
             `).join('');
             applyFocus();
+        }
+
+        function selectCategory(idx) {
+            currentCategoryIdx = idx;
+            showChannelsScreen(true);
         }
 
         function renderChannels() {
@@ -458,7 +439,7 @@
             applyFocus();
         }
 
-        // Focus yönetimi (TV/telefon kumandası için)
+        // --- Focus yönetimi (kumanda için) ---
         function getFocusableElements() {
             const list = [];
             if (activeScreen === "categories") {
@@ -475,10 +456,12 @@
             }
             return list.filter(el=>el && el.offsetParent !== null);
         }
+
         function getActiveFocusedElement() {
             if(document.activeElement && document.activeElement.id === "main-search") return document.activeElement;
             return document.querySelector('.focused');
         }
+
         function setFocusTo(el) {
             if(!el) return;
             document.querySelectorAll('.focused').forEach(item=>item.classList.remove('focused'));
@@ -486,6 +469,7 @@
             else { if(document.activeElement && document.activeElement.id==="main-search") document.activeElement.blur(); el.classList.add('focused'); }
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+
         function applyFocus() {
             const candidates = getFocusableElements();
             if(candidates.length){
@@ -497,6 +481,7 @@
                 else setFocusTo(candidates[0]);
             }
         }
+
         function navigate(direction){
             const active = getActiveFocusedElement();
             const candidates = getFocusableElements();
@@ -521,28 +506,62 @@
             });
             if(best){ setFocusTo(best); let m=best.id.match(/\d+$/); if(m) focusIndex=parseInt(m[0],10); }
         }
-        window.addEventListener('keydown', (e)=>{
-            const isRight=e.key==="ArrowRight"||e.key==="Right"||e.keyCode===39;
-            const isLeft=e.key==="ArrowLeft"||e.key==="Left"||e.keyCode===37;
-            const isDown=e.key==="ArrowDown"||e.key==="Down"||e.keyCode===40;
-            const isUp=e.key==="ArrowUp"||e.key==="Up"||e.keyCode===38;
-            const isEnter=e.key==="Enter"||e.keyCode===13;
-            const isBack=e.key==="Backspace"||e.key==="Escape"||e.key==="Back"||e.keyCode===8||e.keyCode===27||e.keyCode===4||e.keyCode===10009;
-            if(!document.getElementById('login-wall').classList.contains('hidden')){ if(isEnter) checkPassword(); return; }
-            if(document.activeElement===document.getElementById('main-search') && !isEnter && !isBack && !isDown && !isUp) return;
-            if(isBack){ e.preventDefault(); goBackScreen(); return; }
-            if(isRight){ e.preventDefault(); navigate('right'); }
-            else if(isLeft){ e.preventDefault(); navigate('left'); }
-            else if(isDown){ e.preventDefault(); navigate('down'); }
-            else if(isUp){ e.preventDefault(); navigate('up'); }
-            else if(isEnter){ const active = getActiveFocusedElement(); if(active){ e.preventDefault(); active.click(); } }
+
+        // --- Klavye / kumanda olayları ---
+        window.addEventListener('keydown', (e) => {
+            const isRight = e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39;
+            const isLeft = e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37;
+            const isDown = e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40;
+            const isUp = e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38;
+            const isEnter = e.key === "Enter" || e.keyCode === 13;
+            const isBack = e.key === "Backspace" || e.key === "Escape" || e.key === "Back" || e.keyCode === 8 || e.keyCode === 27 || e.keyCode === 4 || e.keyCode === 10009;
+
+            // Giriş ekranı kontrolü
+            if (!document.getElementById('login-wall').classList.contains('hidden')) {
+                if (isEnter) checkPassword();
+                return;
+            }
+            
+            // Eğer arama kutusunda aktifsek ve geri tuşu değilse, ok tuşları ile gezinmeyi engelleme
+            if (document.activeElement === document.getElementById('main-search') && 
+                !isEnter && !isBack && !isDown && !isUp) {
+                return;
+            }
+
+            if (isBack) {
+                e.preventDefault();
+                manualGoBack();
+                return;
+            }
+
+            if (isRight) { e.preventDefault(); navigate('right'); }
+            else if (isLeft) { e.preventDefault(); navigate('left'); }
+            else if (isDown) { e.preventDefault(); navigate('down'); }
+            else if (isUp) { e.preventDefault(); navigate('up'); }
+            else if (isEnter) {
+                const active = getActiveFocusedElement();
+                if (active) { e.preventDefault(); active.click(); }
+            }
         });
+
+        // Global fonksiyonları window'a bağla
+        window.checkPassword = checkPassword;
+        window.selectCategory = selectCategory;
+        window.showAlternativesScreen = showAlternativesScreen;
+        window.playStreamNow = playStreamNow;
+        window.directOpenFromSearch = directOpenFromSearch;
+        window.handleSearch = handleSearch;
+        window.manualGoBack = manualGoBack;
+
+        // Başlangıç
         window.onload = () => {
             const saved = localStorage.getItem('saved_iptv_password');
             if(saved === ACCESS_PASSWORD){
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
-                showCategoriesScreen(false);
+                // Yığını sıfırla ve ana ekranı ekle
+                navigationStack = [];
+                showCategoriesScreen(true);
             } else {
                 document.getElementById('login-wall').classList.remove('hidden');
                 document.getElementById('password-input').focus();
