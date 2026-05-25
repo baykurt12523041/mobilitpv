@@ -68,7 +68,7 @@
 
     <div id="screen-channels" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button id="channels-back-btn" onclick="history.back()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
+            <button id="channels-back-btn" onclick="goBackScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Ana Sayfa
             </button>
             <div>
@@ -82,7 +82,7 @@
 
     <div id="screen-alternatives" class="hidden min-h-screen w-full p-6 md:p-12 max-w-7xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
-            <button id="alternatives-back-btn" onclick="history.back()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
+            <button id="alternatives-back-btn" onclick="goBackScreen()" class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded-xl transition-all font-medium border border-transparent">
                 ◀ Kanallara Dön
             </button>
             <div>
@@ -134,6 +134,7 @@
         let focusIndex = 0;
         let isSearching = false;
         let filteredChannels = [];
+        let screenStack = [];
 
         const video = document.getElementById('video-player');
         const hls = new Hls();
@@ -233,36 +234,15 @@
         function checkPassword() {
             const input = document.getElementById('password-input').value;
             if (input === ACCESS_PASSWORD) {
+                localStorage.setItem('saved_iptv_password', input);
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
-                history.replaceState({ screen: "categories" }, "", "");
+                screenStack = [];
                 showCategoriesScreen(false);
             } else {
                 document.getElementById('login-error').classList.remove('hidden');
             }
         }
-
-        window.addEventListener('popstate', (e) => {
-            const state = e.state;
-            if (state) {
-                if (state.screen === "categories") {
-                    showCategoriesScreen(false);
-                } else if (state.screen === "channels") {
-                    currentCategoryIdx = state.catIdx !== undefined ? state.catIdx : currentCategoryIdx;
-                    showChannelsScreen(false);
-                } else if (state.screen === "alternatives") {
-                    currentCategoryIdx = state.catIdx !== undefined ? state.catIdx : currentCategoryIdx;
-                    currentChannelIdx = state.chanIdx !== undefined ? state.chanIdx : currentChannelIdx;
-                    showAlternativesScreen(currentChannelIdx, false);
-                } else if (state.screen === "player") {
-                    // Usually shouldn't pop into player unless coming forward, but just in case
-                    playStreamNow(0, false);
-                }
-            } else {
-                // Default fallback
-                showCategoriesScreen(false);
-            }
-        });
 
         function handleSearch(query) {
             const cleanQuery = query.trim().toLowerCase();
@@ -325,7 +305,25 @@
             document.getElementById('screen-player').classList.add('hidden');
         }
 
-        function showCategoriesScreen(pushHistory = true) {
+        function goBackScreen() {
+            if (screenStack.length === 0) {
+                window.location.reload();
+                return;
+            }
+            const prevState = screenStack.pop();
+            if (prevState.screen === "categories") {
+                showCategoriesScreen(false);
+            } else if (prevState.screen === "channels") {
+                currentCategoryIdx = prevState.catIdx;
+                showChannelsScreen(false);
+            } else if (prevState.screen === "alternatives") {
+                currentCategoryIdx = prevState.catIdx;
+                currentChannelIdx = prevState.chanIdx;
+                showAlternativesScreen(currentChannelIdx, false);
+            }
+        }
+
+        function showCategoriesScreen(pushToStack = true) {
             hideAllScreens();
             video.pause();
             document.getElementById('screen-categories').classList.remove('hidden');
@@ -334,12 +332,12 @@
             document.getElementById('main-search').value = "";
             isSearching = false;
             renderCategories();
-            if (pushHistory) {
-                history.pushState({ screen: "categories" }, "", "");
+            if (pushToStack) {
+                screenStack = [];
             }
         }
 
-        async function showChannelsScreen(pushHistory = true) {
+        async function showChannelsScreen(pushToStack = true) {
             if (!playlistData[currentCategoryIdx].loaded) {
                 document.getElementById('selected-category-title').innerText = "Yükleniyor...";
                 await fetchCategoryData(currentCategoryIdx);
@@ -352,12 +350,12 @@
             focusIndex = currentChannelIdx;
             document.getElementById('selected-category-title').innerText = playlistData[currentCategoryIdx].categoryName;
             renderChannels();
-            if (pushHistory) {
-                history.pushState({ screen: "channels", catIdx: currentCategoryIdx }, "", "");
+            if (pushToStack) {
+                screenStack.push({ screen: "categories" });
             }
         }
 
-        function showAlternativesScreen(chanIdx, pushHistory = true) {
+        function showAlternativesScreen(chanIdx, pushToStack = true) {
             currentChannelIdx = chanIdx;
             hideAllScreens();
             video.pause();
@@ -367,12 +365,12 @@
             activeScreen = "alternatives";
             focusIndex = 0;
             renderAlternatives();
-            if (pushHistory) {
-                history.pushState({ screen: "alternatives", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx }, "", "");
+            if (pushToStack) {
+                screenStack.push({ screen: "channels", catIdx: currentCategoryIdx });
             }
         }
 
-        function playStreamNow(altIdx, pushHistory = true) {
+        function playStreamNow(altIdx, pushToStack = true) {
             hideAllScreens();
             document.getElementById('screen-player').classList.remove('hidden');
             activeScreen = "player";
@@ -388,14 +386,13 @@
                 video.src = selectedAlt.url;
                 video.addEventListener('loadedmetadata', () => video.play());
             }
-            if (pushHistory) {
-                history.pushState({ screen: "player" }, "", "");
+            if (pushToStack) {
+                screenStack.push({ screen: "alternatives", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
             }
         }
 
         function backToAlternatives() {
-            // Artık kendi history API mizi kullanıyoruz. Manuel geri gitmek için:
-            history.back();
+            goBackScreen();
         }
 
         function renderCategories() {
@@ -632,11 +629,7 @@
 
             if (isBack) {
                 e.preventDefault();
-                if (activeScreen !== "categories") {
-                    history.back();
-                } else {
-                    window.location.reload();
-                }
+                goBackScreen();
                 return;
             }
 
@@ -660,6 +653,19 @@
                 }
             }
         });
+
+        window.onload = () => {
+            const savedPassword = localStorage.getItem('saved_iptv_password');
+            if (savedPassword === ACCESS_PASSWORD) {
+                document.getElementById('login-wall').classList.add('hidden');
+                initializePlaylistData();
+                showCategoriesScreen(false);
+            } else {
+                document.getElementById('login-wall').classList.remove('hidden');
+                const pwdInput = document.getElementById('password-input');
+                if (pwdInput) pwdInput.focus();
+            }
+        };
     </script>
 </body>
 </html>
