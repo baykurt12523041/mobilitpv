@@ -96,7 +96,7 @@
 
     <div id="screen-player" class="hidden fixed inset-0 bg-black z-40 flex flex-col h-screen w-screen overflow-hidden">
         <div class="absolute top-4 left-4 z-50 flex items-center gap-3 opacity-20 hover:opacity-100 transition-opacity duration-300">
-            <button id="player-back-btn" onclick="backToAlternatives()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl border border-transparent">
+            <button id="player-back-btn" onclick="goBackScreen()" class="bg-black/80 text-white text-xs px-5 py-3 rounded-xl border border-slate-800 backdrop-blur-md font-bold tracking-wide shadow-2xl border border-transparent">
                 ◀ Alternatiflere Dön
             </button>
             <div class="bg-black/80 px-4 py-2.5 rounded-xl border border-slate-800 backdrop-blur-md">
@@ -123,8 +123,6 @@
             { name: "Radyo", file: "TÜRK RADYO.m3u", bgGradient: "from-sky-500 via-sky-900 to-[#051014]" },
             { name: "UHD Kanallar", file: "TÜRK UHD.m3u", bgGradient: "from-blue-500 via-cyan-900 to-[#040e14]" },
             { name: "Yerel Kanallar", file: "TÜRK YEREL.m3u", bgGradient: "from-teal-700 via-teal-950 to-[#021210]" }
-            
-            
         ];
 
         let playlistData = [];
@@ -134,10 +132,18 @@
         let focusIndex = 0;
         let isSearching = false;
         let filteredChannels = [];
-        let screenStack = [];
+        
+        // Geri yığını artık history API ile yönetilecek, ayrıca stack array'i sadece durum için
+        let internalStack = []; 
 
         const video = document.getElementById('video-player');
-        const hls = new Hls();
+        let hls = null; // sonradan oluştur
+
+        function initHls() {
+            if (hls) hls.destroy();
+            hls = new Hls();
+            return hls;
+        }
 
         function initializePlaylistData() {
             playlistData = categoriesConfig.map(c => ({
@@ -150,35 +156,24 @@
                 error: false
             }));
             renderCategories();
-            
-            // Arka planda listeleri indir (arama yapabilmek için)
-            playlistData.forEach((cat, idx) => {
-                fetchCategoryData(idx);
-            });
+            playlistData.forEach((cat, idx) => fetchCategoryData(idx));
         }
 
         async function fetchCategoryData(idx) {
             if (playlistData[idx].loaded || playlistData[idx].error) return;
-            
             try {
                 const response = await fetch(GITHUB_REPO_URL + encodeURIComponent(playlistData[idx].file));
                 if (!response.ok) throw new Error("Ağ hatası");
                 const m3uText = await response.text();
                 const channels = parseM3U(m3uText);
-                
                 playlistData[idx].channels = channels;
                 playlistData[idx].loaded = true;
                 playlistData[idx].description = `${channels.length} kanal bulundu.`;
-                
-                if (activeScreen === "categories" && !isSearching) {
-                    renderCategories();
-                }
+                if (activeScreen === "categories" && !isSearching) renderCategories();
             } catch (err) {
                 playlistData[idx].error = true;
                 playlistData[idx].description = "Yüklenemedi.";
-                if (activeScreen === "categories" && !isSearching) {
-                    renderCategories();
-                }
+                if (activeScreen === "categories" && !isSearching) renderCategories();
             }
         }
 
@@ -186,44 +181,27 @@
             const lines = content.split('\n');
             let channels = {};
             let currentExtinf = null;
-
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (line.startsWith('#EXTINF:')) {
                     currentExtinf = line;
                 } else if (line !== '' && !line.startsWith('#') && currentExtinf) {
                     const url = line;
-                    
                     const logoMatch = currentExtinf.match(/tvg-logo="(.*?)"/);
                     const logo = logoMatch ? logoMatch[1] : '';
-
                     const nameParts = currentExtinf.split(',');
                     const rawName = nameParts.length > 1 ? nameParts[nameParts.length - 1].trim() : "Bilinmeyen";
-
                     let cleanName = rawName.replace(/^TR:\s*/i, '');
-                    
                     const qualityRegex = /\s*(HD|FHD|UHD|HQ|SD|4K|\[.*?\]|\(.*?\)|1080p|720p)\s*/gi;
                     let baseName = cleanName.replace(qualityRegex, '').trim();
-                    
                     if (!baseName) baseName = cleanName;
-
                     let quality = cleanName.substring(baseName.length).trim() || 'SD';
-
                     if (!channels[baseName]) {
-                        channels[baseName] = {
-                            channelName: baseName,
-                            logo: logo,
-                            alternatives: []
-                        };
+                        channels[baseName] = { channelName: baseName, logo: logo, alternatives: [] };
                     }
-
                     channels[baseName].alternatives.push({
-                        altName: cleanName,
-                        logo: logo,
-                        quality: quality.length > 15 ? quality.substring(0, 15) + "..." : quality,
-                        url: url
+                        altName: cleanName, logo: logo, quality: quality.length > 15 ? quality.substring(0,15)+"..." : quality, url: url
                     });
-
                     currentExtinf = null;
                 }
             }
@@ -236,7 +214,9 @@
                 localStorage.setItem('saved_iptv_password', input);
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
-                screenStack = [];
+                internalStack = [];
+                // Ana sayfayı göster ve history state'i temizle
+                history.replaceState({ screen: "categories" }, "");
                 showCategoriesScreen(false);
             } else {
                 document.getElementById('login-error').classList.remove('hidden');
@@ -247,17 +227,14 @@
             const cleanQuery = query.trim().toLowerCase();
             const grid = document.getElementById('category-grid');
             const headerTitle = document.getElementById('grid-header-title');
-
             if (cleanQuery === "") {
                 isSearching = false;
                 headerTitle.innerText = "Yayın Kategorileri";
                 renderCategories();
                 return;
             }
-
             isSearching = true;
             filteredChannels = [];
-
             playlistData.forEach((category, catIdx) => {
                 if (category.loaded) {
                     category.channels.forEach((channel, chanIdx) => {
@@ -267,14 +244,11 @@
                     });
                 }
             });
-
             headerTitle.innerText = `Arama Sonuçları (${filteredChannels.length} Kanal Bulundu)`;
-
             if (filteredChannels.length === 0) {
                 grid.innerHTML = `<div class="col-span-full text-center py-12 bg-[#0d121f] rounded-2xl border border-slate-800/60"><p class="text-slate-400 text-sm">Aradığınız kriterlere uygun bir yayın bulunamadı.</p></div>`;
                 return;
             }
-
             grid.innerHTML = filteredChannels.map((chan, idx) => `
                 <div id="search-chan-box-${idx}" onclick="directOpenFromSearch(${chan.catIdx}, ${chan.chanIdx})" class="group bg-[#0f1524] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex items-center p-4 gap-4 h-20">
                     <img src="${chan.logo}" class="w-12 h-12 object-cover rounded-xl border border-slate-800 bg-slate-950" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=='">
@@ -285,7 +259,6 @@
                     <span class="text-xs text-slate-500 font-bold pr-2">Aç ▶</span>
                 </div>
             `).join('');
-            
             focusIndex = 0;
             applyFocus();
         }
@@ -304,39 +277,46 @@
             document.getElementById('screen-player').classList.add('hidden');
         }
 
+        // Gelişmiş geri navigasyon: history API tabanlı
         function goBackScreen() {
-            // 1. Eğer arama modunda isek aramayı temizle ve ana kategori görünümüne dön (uygulama kapanmasın)
+            // Arama modundaysa aramayı temizle
             if (activeScreen === "categories" && isSearching) {
                 const searchInput = document.getElementById('main-search');
                 if (searchInput) searchInput.value = "";
                 handleSearch("");
                 return;
             }
+            // Eğer internalStack boşsa ana ekrandayız, hiçbir şey yapma (çıkış yok)
+            if (internalStack.length === 0) return;
             
-            // 2. Eğer yığın boşsa: ana ekrandayız demektir, hiçbir şey yapma (çıkış yok)
-            if (screenStack.length === 0) {
-                // Ana ekranda geri tuşuna basıldı → uygulama kapanmaz, sadece kalır.
-                // isteğe bağlı olarak bir geri bildirim eklenebilir, ama sessizce işlem yapma.
-                return;
-            }
-            
-            // 3. Yığından önceki ekran bilgisini al ve geri dön
-            const prevState = screenStack.pop();
-            if (prevState.screen === "categories") {
+            const prev = internalStack.pop();
+            if (prev.screen === "categories") {
                 showCategoriesScreen(false);
-            } else if (prevState.screen === "channels") {
-                currentCategoryIdx = prevState.catIdx;
+            } else if (prev.screen === "channels") {
+                currentCategoryIdx = prev.catIdx;
                 showChannelsScreen(false);
-            } else if (prevState.screen === "alternatives") {
-                currentCategoryIdx = prevState.catIdx;
-                currentChannelIdx = prevState.chanIdx;
+            } else if (prev.screen === "alternatives") {
+                currentCategoryIdx = prev.catIdx;
+                currentChannelIdx = prev.chanIdx;
+                showAlternativesScreen(currentChannelIdx, false);
+            } else if (prev.screen === "player") {
+                // Oyuncudan alternatiflere dönüş
+                currentCategoryIdx = prev.catIdx;
+                currentChannelIdx = prev.chanIdx;
                 showAlternativesScreen(currentChannelIdx, false);
             }
         }
 
+        // History state yönetimi: her ekran değişiminde state ekle
+        function pushScreenState(screenType, extra = {}) {
+            const state = { screen: screenType, ...extra };
+            history.pushState(state, "");
+            internalStack.push(state);
+        }
+
         function showCategoriesScreen(pushToStack = true) {
             hideAllScreens();
-            video.pause();
+            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
             document.getElementById('screen-categories').classList.remove('hidden');
             activeScreen = "categories";
             focusIndex = currentCategoryIdx;
@@ -344,7 +324,10 @@
             isSearching = false;
             renderCategories();
             if (pushToStack) {
-                screenStack = []; // ana ekrana dönüşte yığını sıfırla, çünkü artık kök ekrandayız.
+                // Eski stack'i temizle ve sadece categories state'ini koy
+                internalStack = [];
+                history.replaceState({ screen: "categories" }, "");
+                pushScreenState("categories");
             }
         }
 
@@ -353,23 +336,22 @@
                 document.getElementById('selected-category-title').innerText = "Yükleniyor...";
                 await fetchCategoryData(currentCategoryIdx);
             }
-            
             hideAllScreens();
-            video.pause();
+            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
             document.getElementById('screen-channels').classList.remove('hidden');
             activeScreen = "channels";
             focusIndex = currentChannelIdx;
             document.getElementById('selected-category-title').innerText = playlistData[currentCategoryIdx].categoryName;
             renderChannels();
             if (pushToStack) {
-                screenStack.push({ screen: "categories" });
+                pushScreenState("channels", { catIdx: currentCategoryIdx });
             }
         }
 
         function showAlternativesScreen(chanIdx, pushToStack = true) {
             currentChannelIdx = chanIdx;
             hideAllScreens();
-            video.pause();
+            if (video) { video.pause(); if (hls) hls.destroy(); hls = null; }
             const channel = playlistData[currentCategoryIdx].channels[chanIdx];
             document.getElementById('selected-channel-title').innerText = `${channel.channelName} Yayın Kaynakları`;
             document.getElementById('screen-alternatives').classList.remove('hidden');
@@ -377,7 +359,7 @@
             focusIndex = 0;
             renderAlternatives();
             if (pushToStack) {
-                screenStack.push({ screen: "channels", catIdx: currentCategoryIdx });
+                pushScreenState("alternatives", { catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
             }
         }
 
@@ -388,7 +370,9 @@
             const channel = playlistData[currentCategoryIdx].channels[currentChannelIdx];
             const selectedAlt = channel.alternatives[altIdx];
             document.getElementById('playing-title').innerText = `${channel.channelName} (${selectedAlt.quality})`;
-
+            
+            if (hls) hls.destroy();
+            hls = new Hls();
             if (Hls.isSupported()) {
                 hls.loadSource(selectedAlt.url);
                 hls.attachMedia(video);
@@ -398,37 +382,52 @@
                 video.addEventListener('loadedmetadata', () => video.play());
             }
             if (pushToStack) {
-                screenStack.push({ screen: "alternatives", catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
+                pushScreenState("player", { catIdx: currentCategoryIdx, chanIdx: currentChannelIdx });
             }
         }
 
-        function backToAlternatives() {
-            goBackScreen();
-        }
+        // Back tuşu için history API dinleyicisi
+        window.addEventListener("popstate", (event) => {
+            // Kullanıcı geri tuşuna bastığında popstate tetiklenir.
+            // Biz manuel olarak goBackScreen() işlevini çağırıyoruz, çünkü state değişti.
+            // Aynı zamanda internalStack ile senkronize etmek için son state'i kaldır.
+            if (internalStack.length > 0) {
+                // internalStack'in son elemanı şu anki ekranı temsil eder, popstate ile bir geri gidiyoruz.
+                // Bu yüzden internalStack'ten de son elemanı atıp bir önceki ekrana geçmeliyiz.
+                // Lakin goBackScreen zaten internalStack.pop() yapıyor, burada tekrar pop yapmamalıyız.
+                // Sadece goBackScreen çağır ve internalStack'in senkronizasyonunu goBackScreen yapsın.
+                goBackScreen();
+            } else {
+                // Eğer internalStack boşsa ve popstate olduysa, ana sayfadayız ve geri tuşuna basıldı.
+                // Hiçbir şey yapma, sayfa kapanmasın.
+                // Fakat bazen history'de bir önceki state olabilir, onu engellemek için tekrar state ekleyelim.
+                history.pushState({ screen: "categories" }, "");
+            }
+        });
 
+        // buton geri çağrıları
+        window.goBackScreen = goBackScreen;
+        window.selectCategory = (idx) => { currentCategoryIdx = idx; showChannelsScreen(true); };
+        window.showAlternativesScreen = showAlternativesScreen;
+        window.playStreamNow = playStreamNow;
+        window.directOpenFromSearch = directOpenFromSearch;
+        window.checkPassword = checkPassword;
+        window.handleSearch = handleSearch;
+
+        // Render fonksiyonları
         function renderCategories() {
             if (activeScreen !== "categories" || isSearching) return;
             const grid = document.getElementById('category-grid');
             grid.innerHTML = playlistData.map((cat, idx) => `
                 <div id="cat-box-${idx}" onclick="selectCategory(${idx})" class="p-6 rounded-2xl bg-gradient-to-br ${cat.bgGradient} border border-slate-700/40 cursor-pointer shadow-lg transition-all flex flex-col justify-between h-40 relative overflow-hidden group">
-                    <div>
-                        <h2 class="text-xl font-bold text-white tracking-wide">${cat.categoryName}</h2>
-                        <p class="text-xs text-white/60 mt-1.5 line-clamp-2">${cat.description}</p>
-                    </div>
+                    <div><h2 class="text-xl font-bold text-white tracking-wide">${cat.categoryName}</h2><p class="text-xs text-white/60 mt-1.5 line-clamp-2">${cat.description}</p></div>
                     <div class="flex justify-between items-center z-10">
-                        ${cat.loaded ? 
-                            `<span class="text-[11px] bg-black/40 border border-white/10 px-3 py-1 rounded-full text-slate-200 font-semibold">${cat.channels.length} KANAL</span>` 
-                            : `<span class="text-[11px] bg-white/20 border border-white/10 px-3 py-1 rounded-full text-white font-semibold animate-pulse">${cat.error ? "Hata" : "Yükleniyor..."}</span>`}
+                        ${cat.loaded ? `<span class="text-[11px] bg-black/40 border border-white/10 px-3 py-1 rounded-full text-slate-200 font-semibold">${cat.channels.length} KANAL</span>` : `<span class="text-[11px] bg-white/20 border border-white/10 px-3 py-1 rounded-full text-white font-semibold animate-pulse">${cat.error ? "Hata" : "Yükleniyor..."}</span>`}
                         <span class="text-xs font-bold text-white/90 bg-white/10 px-3 py-1 rounded-xl">Göz At →</span>
                     </div>
                 </div>
             `).join('');
             applyFocus();
-        }
-
-        function selectCategory(idx) {
-            currentCategoryIdx = idx;
-            showChannelsScreen(true);
         }
 
         function renderChannels() {
@@ -440,14 +439,8 @@
             }
             grid.innerHTML = channels.map((chan, idx) => `
                 <div id="chan-box-${idx}" onclick="showAlternativesScreen(${idx}, true)" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-col h-48 md:h-56">
-                    <div class="w-full h-32 md:h-36 bg-slate-950 overflow-hidden relative">
-                        <img src="${chan.logo}" alt="${chan.channelName}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=='" class="w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                    </div>
-                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826]">
-                        <h3 class="font-bold text-sm md:text-base text-slate-200 truncate">${chan.channelName}</h3>
-                        <span class="text-[10px] md:text-[11px] text-blue-400 font-medium">${chan.alternatives.length} Kaynak Seçeneği</span>
-                    </div>
+                    <div class="w-full h-32 md:h-36 bg-slate-950 overflow-hidden relative"><img src="${chan.logo}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjwvc3ZnPg'" class="w-full h-full object-cover"><div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div></div>
+                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826]"><h3 class="font-bold text-sm md:text-base text-slate-200 truncate">${chan.channelName}</h3><span class="text-[10px] md:text-[11px] text-blue-400 font-medium">${chan.alternatives.length} Kaynak Seçeneği</span></div>
                 </div>
             `).join('');
             applyFocus();
@@ -456,205 +449,103 @@
         function renderAlternatives() {
             const grid = document.getElementById('alternatives-grid');
             const alternatives = playlistData[currentCategoryIdx].channels[currentChannelIdx].alternatives;
-
             grid.innerHTML = alternatives.map((alt, idx) => `
                 <div id="alt-box-${idx}" onclick="playStreamNow(${idx}, true)" class="group bg-[#111622] border border-slate-800/80 rounded-2xl overflow-hidden cursor-pointer hover:border-blue-500 transition-all flex flex-row md:flex-col h-24 md:h-56">
-                    <div class="w-24 md:w-full h-full md:h-36 bg-gradient-to-br from-slate-950 to-slate-900 overflow-hidden relative shrink-0">
-                        <img src="${alt.logo}" alt="${alt.altName}" onerror="this.style.display='none'" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
-                        <span class="hidden md:inline-block absolute top-2 right-2 text-[9px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded uppercase tracking-wider shadow-md truncate max-w-[80px]">${alt.quality}</span>
-                        <span class="hidden md:inline-block absolute bottom-2 left-3 text-[10px] bg-red-600 font-bold px-2 py-0.5 rounded uppercase tracking-wider text-white shadow-md">Alternatif ${idx + 1}</span>
-                    </div>
-                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826] min-w-0">
-                        <div class="flex flex-col gap-1 md:gap-0">
-                            <div class="flex items-center gap-1.5 md:hidden">
-                                <span class="text-[9px] bg-red-600 font-bold px-1.5 py-0.5 rounded uppercase text-white">Alt ${idx + 1}</span>
-                                <span class="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded uppercase truncate max-w-[80px]">${alt.quality}</span>
-                            </div>
-                            <h3 class="font-bold text-xs md:text-sm text-slate-200 truncate group-hover:text-blue-400 transition-colors mt-0.5 md:mt-0">${alt.altName}</h3>
-                        </div>
-                        <span class="text-[10px] md:text-[11px] text-slate-500 font-medium group-hover:text-blue-400">Hızlı Oynat ▶</span>
-                    </div>
+                    <div class="w-24 md:w-full h-full md:h-36 bg-gradient-to-br from-slate-950 to-slate-900 overflow-hidden relative shrink-0"><img src="${alt.logo}" onerror="this.style.display='none'" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"><span class="hidden md:inline-block absolute top-2 right-2 text-[9px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded">${alt.quality}</span><span class="hidden md:inline-block absolute bottom-2 left-3 text-[10px] bg-red-600 font-bold px-2 py-0.5 rounded">Alternatif ${idx+1}</span></div>
+                    <div class="p-3 md:p-4 flex flex-col justify-between flex-1 bg-[#121826] min-w-0"><div class="flex flex-col gap-1 md:gap-0"><div class="flex items-center gap-1.5 md:hidden"><span class="text-[9px] bg-red-600 font-bold px-1.5 py-0.5 rounded">Alt ${idx+1}</span><span class="text-[9px] bg-blue-600 font-bold px-1.5 py-0.5 rounded truncate">${alt.quality}</span></div><h3 class="font-bold text-xs md:text-sm text-slate-200 truncate">${alt.altName}</h3></div><span class="text-[10px] md:text-[11px] text-slate-500 font-medium group-hover:text-blue-400">Hızlı Oynat ▶</span></div>
                 </div>
             `).join('');
             applyFocus();
         }
 
+        // Focus yönetimi (TV/telefon kumandası için)
         function getFocusableElements() {
             const list = [];
             if (activeScreen === "categories") {
-                const tg = document.getElementById('tg-btn');
-                if (tg) list.push(tg);
-                const search = document.getElementById('main-search');
-                if (search) list.push(search);
-                
-                if (isSearching) {
-                    const boxes = document.querySelectorAll('[id^="search-chan-box-"]');
-                    boxes.forEach(b => list.push(b));
-                } else {
-                    const boxes = document.querySelectorAll('[id^="cat-box-"]');
-                    boxes.forEach(b => list.push(b));
-                }
+                const tg = document.getElementById('tg-btn'); if(tg) list.push(tg);
+                const search = document.getElementById('main-search'); if(search) list.push(search);
+                if(isSearching) document.querySelectorAll('[id^="search-chan-box-"]').forEach(b=>list.push(b));
+                else document.querySelectorAll('[id^="cat-box-"]').forEach(b=>list.push(b));
             } else if (activeScreen === "channels") {
-                const back = document.getElementById('channels-back-btn');
-                if (back) list.push(back);
-                const boxes = document.querySelectorAll('[id^="chan-box-"]');
-                boxes.forEach(b => list.push(b));
+                const back = document.getElementById('channels-back-btn'); if(back) list.push(back);
+                document.querySelectorAll('[id^="chan-box-"]').forEach(b=>list.push(b));
             } else if (activeScreen === "alternatives") {
-                const back = document.getElementById('alternatives-back-btn');
-                if (back) list.push(back);
-                const boxes = document.querySelectorAll('[id^="alt-box-"]');
-                boxes.forEach(b => list.push(b));
+                const back = document.getElementById('alternatives-back-btn'); if(back) list.push(back);
+                document.querySelectorAll('[id^="alt-box-"]').forEach(b=>list.push(b));
             }
-            return list.filter(el => el && el.offsetParent !== null);
+            return list.filter(el=>el && el.offsetParent !== null);
         }
-
         function getActiveFocusedElement() {
-            if (document.activeElement && document.activeElement.id === "main-search") {
-                return document.activeElement;
-            }
+            if(document.activeElement && document.activeElement.id === "main-search") return document.activeElement;
             return document.querySelector('.focused');
         }
-
         function setFocusTo(el) {
-            if (!el) return;
-            document.querySelectorAll('.focused').forEach(item => item.classList.remove('focused'));
-            if (el.id === "main-search") {
-                el.focus();
-            } else {
-                if (document.activeElement && document.activeElement.id === "main-search") {
-                    document.activeElement.blur();
-                }
-                el.classList.add('focused');
-            }
+            if(!el) return;
+            document.querySelectorAll('.focused').forEach(item=>item.classList.remove('focused'));
+            if(el.id === "main-search") el.focus();
+            else { if(document.activeElement && document.activeElement.id==="main-search") document.activeElement.blur(); el.classList.add('focused'); }
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-
         function applyFocus() {
             const candidates = getFocusableElements();
-            if (candidates.length > 0) {
+            if(candidates.length){
                 let target = null;
-                if (activeScreen === "categories") {
-                    target = isSearching ? document.getElementById(`search-chan-box-${focusIndex}`) : document.getElementById(`cat-box-${focusIndex}`);
-                } else if (activeScreen === "channels") {
-                    target = document.getElementById(`chan-box-${focusIndex}`);
-                } else if (activeScreen === "alternatives") {
-                    target = document.getElementById(`alt-box-${focusIndex}`);
-                }
-                if (target && candidates.includes(target)) {
-                    setFocusTo(target);
-                } else {
-                    setFocusTo(candidates[0]);
-                }
+                if(activeScreen==="categories") target = isSearching ? document.getElementById(`search-chan-box-${focusIndex}`) : document.getElementById(`cat-box-${focusIndex}`);
+                else if(activeScreen==="channels") target = document.getElementById(`chan-box-${focusIndex}`);
+                else if(activeScreen==="alternatives") target = document.getElementById(`alt-box-${focusIndex}`);
+                if(target && candidates.includes(target)) setFocusTo(target);
+                else setFocusTo(candidates[0]);
             }
         }
-
-        function navigate(direction) {
+        function navigate(direction){
             const active = getActiveFocusedElement();
             const candidates = getFocusableElements();
-            
-            if (!active) {
-                if (candidates.length > 0) setFocusTo(candidates[0]);
-                return;
-            }
-            
+            if(!active){ if(candidates.length) setFocusTo(candidates[0]); return; }
             const activeRect = active.getBoundingClientRect();
-            const activeCenter = {
-                x: activeRect.left + activeRect.width / 2,
-                y: activeRect.top + activeRect.height / 2
-            };
-            
-            let bestCandidate = null;
-            let minScore = Infinity;
-            
-            candidates.forEach(candidate => {
-                if (candidate === active) return;
-                const rect = candidate.getBoundingClientRect();
-                const center = {
-                    x: rect.left + rect.width / 2,
-                    y: rect.top + rect.height / 2
-                };
-                const dx = center.x - activeCenter.x;
-                const dy = center.y - activeCenter.y;
-                let isValid = false;
-                switch (direction) {
-                    case 'left': isValid = dx < -5; break;
-                    case 'right': isValid = dx > 5; break;
-                    case 'up': isValid = dy < -5; break;
-                    case 'down': isValid = dy > 5; break;
-                }
-                if (isValid) {
-                    let score = 0;
-                    if (direction === 'left' || direction === 'right') score = Math.abs(dx) + Math.abs(dy) * 4;
-                    else score = Math.abs(dy) + Math.abs(dx) * 4;
-                    if (score < minScore) {
-                        minScore = score;
-                        bestCandidate = candidate;
-                    }
+            const activeCenter = { x: activeRect.left+activeRect.width/2, y: activeRect.top+activeRect.height/2 };
+            let best=null, bestScore=Infinity;
+            candidates.forEach(cand=>{
+                if(cand===active) return;
+                const rect = cand.getBoundingClientRect();
+                const center = { x: rect.left+rect.width/2, y: rect.top+rect.height/2 };
+                let dx=center.x-activeCenter.x, dy=center.y-activeCenter.y;
+                let valid=false;
+                if(direction==='left') valid = dx<-5;
+                else if(direction==='right') valid = dx>5;
+                else if(direction==='up') valid = dy<-5;
+                else if(direction==='down') valid = dy>5;
+                if(valid){
+                    let score = (direction==='left'||direction==='right') ? Math.abs(dx)+Math.abs(dy)*4 : Math.abs(dy)+Math.abs(dx)*4;
+                    if(score<bestScore){ bestScore=score; best=cand; }
                 }
             });
-            
-            if (bestCandidate) {
-                setFocusTo(bestCandidate);
-                const idMatch = bestCandidate.id.match(/\d+$/);
-                if (idMatch) focusIndex = parseInt(idMatch[0], 10);
-            }
+            if(best){ setFocusTo(best); let m=best.id.match(/\d+$/); if(m) focusIndex=parseInt(m[0],10); }
         }
-
-        window.addEventListener('keydown', (e) => {
-            const isRight = e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39;
-            const isLeft = e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37;
-            const isDown = e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40;
-            const isUp = e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38;
-            const isEnter = e.key === "Enter" || e.keyCode === 13;
-            const isBack = e.key === "Backspace" || e.key === "Escape" || e.key === "Back" || e.keyCode === 8 || e.keyCode === 27 || e.keyCode === 4 || e.keyCode === 10009;
-
-            if (!document.getElementById('login-wall').classList.contains('hidden')) {
-                if (isEnter) checkPassword();
-                return;
-            }
-            
-            if (document.activeElement === document.getElementById('main-search') && 
-                !isEnter && !isBack && !isDown && !isUp) {
-                return;
-            }
-
-            if (isBack) {
-                e.preventDefault();
-                goBackScreen();
-                return;
-            }
-
-            if (isRight) {
-                e.preventDefault();
-                navigate('right');
-            } else if (isLeft) {
-                e.preventDefault();
-                navigate('left');
-            } else if (isDown) {
-                e.preventDefault();
-                navigate('down');
-            } else if (isUp) {
-                e.preventDefault();
-                navigate('up');
-            } else if (isEnter) {
-                const active = getActiveFocusedElement();
-                if (active) {
-                    e.preventDefault();
-                    active.click();
-                }
-            }
+        window.addEventListener('keydown', (e)=>{
+            const isRight=e.key==="ArrowRight"||e.key==="Right"||e.keyCode===39;
+            const isLeft=e.key==="ArrowLeft"||e.key==="Left"||e.keyCode===37;
+            const isDown=e.key==="ArrowDown"||e.key==="Down"||e.keyCode===40;
+            const isUp=e.key==="ArrowUp"||e.key==="Up"||e.keyCode===38;
+            const isEnter=e.key==="Enter"||e.keyCode===13;
+            const isBack=e.key==="Backspace"||e.key==="Escape"||e.key==="Back"||e.keyCode===8||e.keyCode===27||e.keyCode===4||e.keyCode===10009;
+            if(!document.getElementById('login-wall').classList.contains('hidden')){ if(isEnter) checkPassword(); return; }
+            if(document.activeElement===document.getElementById('main-search') && !isEnter && !isBack && !isDown && !isUp) return;
+            if(isBack){ e.preventDefault(); goBackScreen(); return; }
+            if(isRight){ e.preventDefault(); navigate('right'); }
+            else if(isLeft){ e.preventDefault(); navigate('left'); }
+            else if(isDown){ e.preventDefault(); navigate('down'); }
+            else if(isUp){ e.preventDefault(); navigate('up'); }
+            else if(isEnter){ const active = getActiveFocusedElement(); if(active){ e.preventDefault(); active.click(); } }
         });
-
         window.onload = () => {
-            const savedPassword = localStorage.getItem('saved_iptv_password');
-            if (savedPassword === ACCESS_PASSWORD) {
+            const saved = localStorage.getItem('saved_iptv_password');
+            if(saved === ACCESS_PASSWORD){
                 document.getElementById('login-wall').classList.add('hidden');
                 initializePlaylistData();
                 showCategoriesScreen(false);
             } else {
                 document.getElementById('login-wall').classList.remove('hidden');
-                const pwdInput = document.getElementById('password-input');
-                if (pwdInput) pwdInput.focus();
+                document.getElementById('password-input').focus();
             }
         };
     </script>
